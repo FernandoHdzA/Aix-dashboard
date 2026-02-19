@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIX Initiatives Dashboard</title>
+
+    <script>
+        // ── SharePoint configuration ──────────────────────────────────────────
+        // This page is hosted inside SharePoint/Teams and uses the existing
+        // session cookie for authentication — no login required.
+        const SP = {
+            siteUrl:         "https://smartmatic.sharepoint.com/sites/AIX2",
+            initiativesList: "Challenge Videos",
+            commentsList:    "AIX Comments",  // update once Comments list is created
+        };
+    </script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background-color: #f9fafb;
+        }
+
+        /* ── Saving toast ── */
+        .saving-toast {
+            position: fixed; bottom: 1.5rem; right: 1.5rem;
+            background: #1f2937; color: white; padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem; font-size: 0.875rem; z-index: 9998;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+        .saving-toast.show { opacity: 1; }
+
+        /* ── Header ── */
+        .header {
+            background: linear-gradient(to right, #8B3A9E, #D946A6);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: white; padding: 2rem;
+        }
+        .header-content {
+            max-width: 1280px; margin: 0 auto;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 1rem;
+        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .header p  { opacity: 0.9; }
+        .header-right { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        @media (max-width: 600px) {
+            .header { padding: 1.25rem; }
+            .header h1 { font-size: 1.75rem; }
+            .header-content { flex-direction: column; align-items: flex-start; }
+        }
+
+        /* user display */
+        .user-pill {
+            display: flex; align-items: center; gap: 0.5rem;
+            background: rgba(255,255,255,0.15); padding: 0.4rem 0.9rem;
+            border-radius: 2rem; font-size: 0.85rem; opacity: 0.9;
+        }
+
+        .btn-add-initiative {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.75rem 1rem; background: #4F23C9; color: white;
+            border: none; border-radius: 0.5rem; font-size: 1rem;
+            font-weight: 500; cursor: pointer; transition: all 0.2s; min-width: 80px;
+        }
+        .btn-add-initiative:hover  { background: #663DD4; }
+        .btn-add-initiative:active { background: #441EAB; transform: translateY(1px); }
+        .btn-add-initiative:focus  { outline: 2px solid #006FFF; outline-offset: 2px; }
+        .btn-add-initiative svg { width: 20px; height: 20px; }
+
+        /* ── Layout ── */
+        .container { max-width: 1280px; margin: 0 auto; padding: 2rem; }
+        @media (max-width: 600px) {
+            .container { padding: 1rem; }
+        }
+
+        .tabs { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .tab {
+            padding: 0.75rem 1.5rem; border-radius: 0.5rem;
+            cursor: pointer; font-weight: 600; border: none; transition: all 0.3s;
+        }
+        .tab.active { background: linear-gradient(to right, #8B3A9E, #D946A6); color: white; }
+        .tab:not(.active) { background: white; color: #8B3A9E; }
+
+        /* ── Welcome ── */
+        .welcome-section {
+            background: white; padding: 3rem; border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 3rem;
+            min-height: 50vh; display: flex; flex-direction: column; justify-content: center;
+        }
+        .welcome-title {
+            font-size: 3rem; font-weight: bold;
+            background: linear-gradient(to right, #8B3A9E, #D946A6);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 2rem; line-height: 1.2;
+        }
+        .welcome-subtitle { font-size: 1.5rem; color: #6b7280; margin-bottom: 1.5rem; font-weight: 600; }
+        .welcome-description { font-size: 1.125rem; color: #374151; line-height: 1.8; max-width: 900px; }
+        @media (max-width: 600px) {
+            .welcome-title { font-size: 1.75rem; }
+            .welcome-subtitle { font-size: 1.1rem; }
+            .welcome-description { font-size: 1rem; }
+            .welcome-section { padding: 1.5rem; }
+        }
+        .welcome-description p { margin-bottom: 1.25rem; }
+
+        /* ── Stats ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem; margin-bottom: 2rem;
+        }
+        @media (max-width: 900px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+        .stat-card {
+            padding: 1.5rem; border-radius: 0.75rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); background: #8B3A9E;
+            color: white; transform: scale(1); transition: transform 0.3s;
+        }
+        .stat-card:hover { transform: scale(1.05); }
+        .stat-card.gradient { background: linear-gradient(135deg, #8B3A9E, #D946A6); }
+        .stat-card h3 { font-size: 0.875rem; opacity: 0.9; margin-bottom: 0.5rem; }
+        .stat-card .value { font-size: 2.5rem; font-weight: bold; }
+
+        /* ── Priority sections ── */
+        .priority-section {
+            background: white; padding: 1.5rem; border-radius: 0.75rem;
+            margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .priority-header { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+        .priority-badge {
+            background: linear-gradient(to right, #8B3A9E, #D946A6);
+            color: white; padding: 0.5rem 1rem; border-radius: 0.5rem;
+            font-weight: bold; font-size: 1.25rem;
+        }
+        .priority-count { font-size: 1.25rem; font-weight: bold; color: #8B3A9E; }
+
+        /* ── Cards ── */
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+        @media (max-width: 1024px) {
+            .projects-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .projects-grid { grid-template-columns: 1fr; }
+        }
+        .project-card {
+            background: white; padding: 1rem; border-radius: 0.5rem;
+            border: 1px solid #e5e7eb; transition: all 0.3s;
+            position: relative; padding-bottom: 3rem;
+        }
+        .project-card:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.1); transform: translateY(-2px); }
+        .project-card h4 {
+            color: #8B3A9E; font-size: 0.875rem; margin-bottom: 0.5rem;
+            height: 3.5rem; line-height: 1.25; overflow: hidden;
+            display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+        }
+        .project-meta { font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem; }
+
+        .interaction-icons {
+            position: absolute; bottom: 1rem; left: 1rem;
+            display: flex; gap: 1rem; align-items: center;
+        }
+        .icon-button {
+            display: flex; align-items: center; gap: 0.25rem;
+            cursor: pointer; font-size: 0.875rem; color: #6b7280;
+            background: none; border: none; padding: 0; transition: all 0.2s;
+        }
+        .icon-button:hover { color: #8B3A9E; }
+        .icon-button svg { width: 18px; height: 18px; }
+        .icon-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .heart-icon { stroke: #6b7280; fill: none; transition: all 0.2s; }
+        .heart-icon.liked { fill: #ef4444; stroke: #ef4444; }
+
+        .badges {
+            display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0;
+            position: absolute; bottom: 1rem; right: 1rem;
+        }
+        .badge { padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; color: white; }
+        .badge-pink        { background: #D946A6; }
+        .badge-green       { background: #16a34a; }
+        .badge-yellow      { background: #eab308; }
+        .badge-gray        { background: #6b7280; }
+        .badge-light-gray  { background: #d1d5db; color: #374151; }
+
+        /* ── Modals ── */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center; z-index: 1000;
+        }
+        .modal-content {
+            background: white; border-radius: 0.75rem; padding: 2rem;
+            max-width: 600px; width: 90%; max-height: 85vh; overflow-y: auto;
+            box-shadow: 0 20px 25px rgba(0,0,0,0.15);
+        }
+        @media (max-width: 600px) {
+            .modal-content { padding: 1.25rem; width: 96%; }
+        }
+        .modal-title { color: #8B3A9E; font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem; }
+
+        .comments-list { margin-bottom: 1.5rem; max-height: 300px; overflow-y: auto; }
+        .comment-item {
+            padding: 1rem; background: #f9fafb; border-radius: 0.5rem;
+            margin-bottom: 0.75rem; border: 1px solid #e5e7eb;
+        }
+        .comment-author { font-weight: 600; color: #8B3A9E; font-size: 0.875rem; margin-bottom: 0.25rem; }
+        .comment-time   { font-size: 0.75rem; color: #9ca3af; margin-bottom: 0.5rem; }
+        .comment-text   { font-size: 0.875rem; color: #374151; line-height: 1.5; }
+
+        .comment-form { display: flex; flex-direction: column; gap: 0.75rem; }
+        .comment-input {
+            width: 100%; padding: 0.75rem; border: 1px solid #d1d5db;
+            border-radius: 0.5rem; font-size: 0.875rem; resize: vertical; min-height: 80px;
+        }
+        .comment-input:focus { outline: none; border-color: #8B3A9E; box-shadow: 0 0 0 3px rgba(139,58,158,0.1); }
+
+        .modal-actions { display: flex; gap: 0.75rem; }
+        .btn-submit {
+            flex: 1; padding: 0.75rem;
+            background: linear-gradient(to right, #8B3A9E, #D946A6);
+            color: white; border: none; border-radius: 0.5rem;
+            font-weight: 600; cursor: pointer; transition: all 0.3s;
+        }
+        .btn-submit:hover    { box-shadow: 0 4px 12px rgba(139,58,158,0.3); }
+        .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-cancel {
+            padding: 0.75rem 1.5rem; background: #e5e7eb; color: #374151;
+            border: none; border-radius: 0.5rem; font-weight: 600; cursor: pointer;
+        }
+        .btn-cancel:hover { background: #d1d5db; }
+
+        .filter-card { background: white; padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .filter-buttons { display: flex; gap: 1rem; align-items: center; }
+        .filter-label { font-weight: 600; color: #8B3A9E; }
+        .filter-btn { padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; border: none; font-weight: 500; transition: all 0.3s; }
+        .filter-btn.active { background: linear-gradient(to right, #8B3A9E, #D946A6); color: white; }
+        .filter-btn:not(.active) { background: #f3f4f6; color: #374151; }
+        .charts-section { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
+        .chart-card { background: white; padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .chart-card h2 { color: #8B3A9E; font-size: 1.5rem; margin-bottom: 1rem; }
+        canvas { max-height: 300px; }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- Saving toast -->
+<div class="saving-toast" id="saving-toast">Saving…</div>
+
+<!-- Header -->
+<div class="header">
+    <div class="header-content">
+        <div>
+            <h1>AIX Initiatives</h1>
+            <p>Strategic AI &amp; Innovation Projects Dashboard</p>
+        </div>
+        <div class="header-right">
+            <div class="user-pill" id="user-pill" style="display:none">
+                <span>👤</span><span id="user-name"></span>
+            </div>
+            <button class="btn-add-initiative" data-action="new-initiative">
+                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 4V16M4 10H16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Add New Initiative
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="tabs">
+        <button class="tab active" data-action="tab-home">Home</button>
+        <button class="tab" data-action="tab-priorities">Check ARI Initiatives</button>
+    </div>
+
+    <!-- Home -->
+    <div id="home-section">
+        <div class="welcome-section">
+            <h1 class="welcome-title">Welcome to the AIX Repository of Initiatives (ARI)</h1>
+            <h2 class="welcome-subtitle">What is this?</h2>
+            <div class="welcome-description">
+                <p>The AIX Group* is currently leading a number of formal initiatives to increase efficiency in company processes, as well as to create new differentiated products; all supported by automation and AI.</p>
+                <p>We know different people in the company are interested in participating in these initiatives, and some are even organically leading initiatives of their own on this regard.</p>
+                <p>The ARI is therefore a place where:</p>
+                <ul style="margin-left: 2rem; margin-bottom: 1.25rem;">
+                    <li style="margin-bottom: 0.5rem;">All AIX formal initiatives are published and briefly explained.</li>
+                    <li style="margin-bottom: 0.5rem;">People can comment, vote for, or request participation in these initiatives.</li>
+                    <li style="margin-bottom: 0.5rem;">And <strong style="text-decoration: underline;">very importantly</strong>, it is a place where we encourage you to submit those initiatives in which you are currently working on. This way, the AIX team or other team members can support you.</li>
+                </ul>
+                <h2 class="welcome-subtitle" style="margin-top: 2rem;">What we want to achieve?</h2>
+                <p>We want to synchronize efforts, support each other, avoid rework, learn from each other, and ultimately have a platform where we can make all our initiatives a reality.</p>
+                <p style="margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb; font-size: 0.875rem; color: #6b7280; font-style: italic;">
+                    <strong>*What is the AIX Group?</strong> Is the team lead by Kleydis, Leonardo, and Fernando, which is in charge of formalizing company sponsored Automation and AI projects to meet strategic goals.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid hidden" id="stats-grid">
+        <div class="stat-card gradient"><h3>Total Projects</h3><div class="value" id="stat-total">—</div></div>
+        <div class="stat-card"><h3>High Impact</h3><div class="value" id="stat-impact">—</div></div>
+        <div class="stat-card"><h3>Total Likes</h3><div class="value" id="stat-progress">—</div></div>
+        <div class="stat-card"><h3>P1 Initiatives</h3><div class="value" id="stat-completed">—</div></div>
+    </div>
+
+    <!-- Priorities -->
+    <div id="priorities-section" class="hidden">
+        <div class="priority-section">
+            <div class="priority-header">
+                <span class="priority-badge">Highest Priority</span>
+                <span class="priority-count" id="p1-count">— Projects</span>
+            </div>
+            <div class="projects-grid" id="p1-projects"></div>
+        </div>
+        <div class="priority-section">
+            <div class="priority-header">
+                <span class="priority-badge">Second Tier Priority</span>
+                <span class="priority-count" id="p2-count">— Projects</span>
+            </div>
+            <div class="projects-grid" id="p2-projects"></div>
+        </div>
+        <div class="priority-section">
+            <div class="priority-header">
+                <span class="priority-badge">Third Tier Priority</span>
+                <span class="priority-count" id="p3-count">— Projects</span>
+            </div>
+            <div class="projects-grid" id="p3-projects"></div>
+        </div>
+        <div class="priority-section">
+            <div class="priority-header">
+                <span class="priority-badge">Fourth Tier Priority</span>
+                <span class="priority-count" id="p4-count">— Projects</span>
+            </div>
+            <div class="projects-grid" id="p4-projects"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// SharePoint REST API
+// Works both locally (cookie auth) and inside Teams/SharePoint iframes
+// (uses spPageContextInfo token injected by SharePoint into every hosted page)
+// ══════════════════════════════════════════════════════════════════════════
+
+// Resolve the actual site URL — prefer the SharePoint page context if available
+// so relative calls work correctly inside Teams iframes
+function getSiteUrl() {
+    if (window._spPageContextInfo && window._spPageContextInfo.webAbsoluteUrl) {
+        return window._spPageContextInfo.webAbsoluteUrl.replace(/\/$/, '');
+    }
+    return SP.siteUrl;
+}
+
+const API = () => getSiteUrl() + '/_api';
+
+// Get request digest — from page context if available (Teams), else fetch it
+let _digestCache = null;
+let _digestExpiry = 0;
+async function getDigest() {
+    // Use the digest SharePoint already injected into the page (Teams/iframe)
+    if (window._spPageContextInfo && window._spPageContextInfo.formDigestValue) {
+        return window._spPageContextInfo.formDigestValue;
+    }
+    // Cache the fetched digest for 25 minutes
+    if (_digestCache && Date.now() < _digestExpiry) return _digestCache;
+    const res = await fetch(`${getSiteUrl()}/_api/contextinfo`, {
+        method: 'POST',
+        headers: { Accept: 'application/json;odata=nometadata' },
+        credentials: 'include'
+    });
+    if (!res.ok) throw new Error('Could not get SharePoint digest: ' + res.status);
+    const data = await res.json();
+    _digestCache  = data.FormDigestValue;
+    _digestExpiry = Date.now() + 25 * 60 * 1000;
+    return _digestCache;
+}
+
+// Build fetch options — include credentials and, for Teams, the bearer token
+// if SharePoint has exposed it via _spPageContextInfo
+function fetchOpts(extra = {}) {
+    const headers = {
+        Accept: 'application/json;odata=nometadata',
+        ...extra.headers
+    };
+    // In Teams modern experience SP injects an aadInfo with access token
+    if (window._spPageContextInfo && window._spPageContextInfo.aadInfo) {
+        try {
+            const token = window._spPageContextInfo.aadInfo.token;
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+        } catch {}
+    }
+    return { ...extra, headers, credentials: 'include' };
+}
+
+async function spGet(url) {
+    const res = await fetch(url, fetchOpts());
+    if (!res.ok) throw new Error(`SP GET ${res.status}: ${await res.text()}`);
+    return res.json();
+}
+
+async function spPost(url, body, digest) {
+    const res = await fetch(url, fetchOpts({
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json;odata=nometadata',
+            'X-RequestDigest': digest,
+        },
+        body: JSON.stringify(body)
+    }));
+    if (!res.ok) throw new Error(`SP POST ${res.status}: ${await res.text()}`);
+    return res.status === 204 ? null : res.json();
+}
+
+async function spPatch(url, body, digest) {
+    const res = await fetch(url, fetchOpts({
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json;odata=nometadata',
+            'X-RequestDigest': digest,
+            'X-HTTP-Method': 'MERGE',
+            'IF-MATCH': '*',
+        },
+        body: JSON.stringify(body)
+    }));
+    if (!res.ok) throw new Error(`SP PATCH ${res.status}: ${await res.text()}`);
+}
+
+function listUrl(listName) {
+    return `${API()}/web/lists/getbytitle('${encodeURIComponent(listName)}')`;
+}
+function itemsUrl(listName, query = '') {
+    return `${listUrl(listName)}/items${query}`;
+}
+function itemUrl(listName, id) {
+    return `${listUrl(listName)}/items(${id})`;
+}
+
+// ── App state ─────────────────────────────────────────────────────────────────
+let currentUser       = { displayName: '', email: '' };
+let projects          = [];
+let userLikedIds      = new Set();   // item IDs liked this session
+let commentsData      = {};          // { itemId: [{author, timestamp, text}] }
+let currentCommentProject = null;
+
+// ── Map SP list item → project ────────────────────────────────────────────────
+function spToProject(item) {
+    const priority     = item.Priority       || 'P3';
+    const highImpact   = item.High_x0020_Impact     || item.HighImpact     || 'No';
+    const highComplexity = item.High_x0020_Complexity || item.HighComplexity || 'No';
+    const likes        = Number(item.Number_x0020_of_x0020_Likes
+                              || item.NumberofLikes
+                              || item.NumberOfLikes
+                              || 0);
+    // Person fields come back as Title string in REST nometadata
+    const owner = item.AIX_x0020_CoreId
+        ? (item.AIX_x0020_Core?.Title || '')
+        : (item.AIXCore?.Title || item['AIX Core']?.Title || '');
+
+    return {
+        id:             item.Id,
+        priority,
+        highImpact,
+        highComplexity,
+        idea:           item.Title || '',
+        description:    item.Short_x0020_Problem_x0020_Statement || item.ShortProblemStatement || '',
+        outputType:     item.Output_x0020_type || item.Outputtype || '',
+        likes,
+        department:     owner,
+    };
+}
+
+// ── Load current user (SP REST) ───────────────────────────────────────────────
+async function loadCurrentUser() {
+    try {
+        // spPageContextInfo is injected by SharePoint on every hosted page
+        // — use it first (works in Teams without an extra network call)
+        if (window._spPageContextInfo) {
+            const ctx = window._spPageContextInfo;
+            currentUser = {
+                displayName: ctx.userDisplayName || ctx.useName || '',
+                email:       ctx.userEmail       || ctx.loginName || ''
+            };
+        }
+        if (!currentUser.displayName) {
+            const data = await spGet(`${getSiteUrl()}/_api/web/currentuser?$select=Title,Email`);
+            currentUser = { displayName: data.Title || '', email: data.Email || '' };
+        }
+        if (currentUser.displayName) {
+            document.getElementById('user-name').textContent = currentUser.displayName;
+            document.getElementById('user-pill').style.display = 'flex';
+        }
+    } catch (e) { console.warn('Could not load current user:', e.message); }
+}
+
+// ── Load initiatives ──────────────────────────────────────────────────────────
+async function loadProjects() {
+    const select = '$select=Id,Title,Priority,High_x0020_Impact,High_x0020_Complexity,Short_x0020_Problem_x0020_Statement,Output_x0020_type,Number_x0020_of_x0020_Likes,AIX_x0020_Core/Title&$expand=AIX_x0020_Core&$top=500&$orderby=Priority asc';
+    const data   = await spGet(itemsUrl(SP.initiativesList, `?${select}`));
+    projects = (data.value || []).filter(i => i.Title).map(spToProject);
+}
+
+// ── Load comments ─────────────────────────────────────────────────────────────
+async function loadComments() {
+    commentsData = {};
+    try {
+        const select = '$select=Id,Initiative,Comment,AuthorName,Created&$top=500&$orderby=Created asc';
+        const data   = await spGet(itemsUrl(SP.commentsList, `?${select}`));
+        for (const item of (data.value || [])) {
+            const project = projects.find(p => p.idea === item.Initiative);
+            if (!project) continue;
+            if (!commentsData[project.id]) commentsData[project.id] = [];
+            commentsData[project.id].push({
+                author:    item.AuthorName || 'Unknown',
+                timestamp: item.Created ? new Date(item.Created).toLocaleString() : '',
+                text:      item.Comment || '',
+            });
+        }
+    } catch (e) { console.warn('Comments list not ready yet:', e.message); }
+}
+
+// ── Write helpers ─────────────────────────────────────────────────────────────
+function showToast(msg) {
+    const t = document.getElementById('saving-toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+async function writeLike(project) {
+    const digest   = await getDigest();
+    const newCount = (project.likes || 0) + 1;
+    await spPatch(itemUrl(SP.initiativesList, project.id),
+        { __metadata: { type: 'SP.Data.Challenge_x0020_VideosListItem' },
+          Number_x0020_of_x0020_Likes: newCount }, digest);
+    project.likes = newCount;
+}
+
+async function writeComment(project, text) {
+    const digest = await getDigest();
+    await spPost(itemsUrl(SP.commentsList), {
+        __metadata: { type: 'SP.Data.AIX_x0020_CommentsListItem' },
+        Initiative:  project.idea,
+        Comment:     text,
+        AuthorName:  currentUser.displayName || 'Anonymous',
+    }, digest);
+}
+
+async function writeNewInitiative(p) {
+    const digest = await getDigest();
+    await spPost(itemsUrl(SP.initiativesList), {
+        __metadata: { type: 'SP.Data.Challenge_x0020_VideosListItem' },
+        Title:                                    p.idea,
+        Priority:                                 p.priority,
+        High_x0020_Impact:                        p.highImpact,
+        High_x0020_Complexity:                    p.highComplexity,
+        Output_x0020_type:                        p.outputType,
+        Short_x0020_Problem_x0020_Statement:      p.description || '',
+        Number_x0020_of_x0020_Likes:              0,
+    }, digest);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderProjects() {
+    document.getElementById('stat-total').textContent    = projects.length;
+    document.getElementById('stat-impact').textContent   = projects.filter(p => p.highImpact === 'Yes').length;
+    const totalLikes = projects.reduce((s, p) => s + (p.likes || 0), 0);
+    document.getElementById('stat-progress').textContent = totalLikes;
+    document.getElementById('stat-completed').textContent = projects.filter(p => p.priority === 'P1').length;
+
+    ['P1','P2','P3','P4'].forEach(priority => {
+        const pp = projects.filter(p => p.priority === priority);
+        document.getElementById(`${priority.toLowerCase()}-count`).textContent = `${pp.length} Projects`;
+
+        document.getElementById(`${priority.toLowerCase()}-projects`).innerHTML = pp.map(p => {
+            const commentCount = (commentsData[p.id] || []).length;
+            const isLiked      = userLikedIds.has(p.id);
+
+            return `
+            <div class="project-card">
+                <h4>${p.idea}</h4>
+                ${p.description ? `<div class="project-meta" style="font-style:italic;color:#4b5563;margin-bottom:0.4rem;">${p.description.substring(0,100)}${p.description.length>100?'…':''}</div>` : ''}
+                <div class="project-meta">&#128100; ${p.department || 'General'}</div>
+                <div class="project-meta"><strong>Type:</strong> ${p.outputType || '—'}</div>
+                <div class="project-meta"><strong>Impact:</strong> ${p.highImpact === 'Yes' ? 'High' : 'Low'} &nbsp;|&nbsp; <strong>Complexity:</strong> ${p.highComplexity === 'Yes' ? 'High' : 'Low'}</div>
+                <div class="interaction-icons">
+                    <button class="icon-button" data-comment="${p.id}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        <span>${commentCount}</span>
+                    </button>
+                    <button class="icon-button" data-like="${p.id}" id="like-btn-${p.id}" ${isLiked ? 'disabled' : ''}>
+                        <svg class="heart-icon ${isLiked ? 'liked' : ''}" viewBox="0 0 24 24" stroke-width="2">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                        </svg>
+                        <span id="like-count-${p.id}">${p.likes || 0}</span>
+                    </button>
+                </div>
+                <div class="badges">
+                    <span class="badge badge-pink">${p.priority}</span>
+                </div>
+            </div>`;
+        }).join('');
+    });
+}
+
+// ── Interactions ──────────────────────────────────────────────────────────────
+async function toggleLike(projectId) {
+    if (userLikedIds.has(projectId)) return;
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    userLikedIds.add(projectId);
+    project.likes = (project.likes || 0) + 1;
+    const btn = document.getElementById(`like-btn-${projectId}`);
+    if (btn) {
+        btn.querySelector('.heart-icon').classList.add('liked');
+        btn.querySelector('span').textContent = project.likes;
+        btn.disabled = true;
+    }
+    showToast('Saving like…');
+    try {
+        await writeLike(project);
+        showToast('Liked ✓');
+    } catch (err) {
+        console.error(err);
+        userLikedIds.delete(projectId);
+        project.likes--;
+        renderProjects();
+        showToast('Could not save like: ' + err.message);
+    }
+}
+
+function openComments(projectId) {
+    currentCommentProject = projectId;
+    const project  = projects.find(p => p.id === projectId);
+    const comments = commentsData[projectId] || [];
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'comment-modal';
+    modal.innerHTML = `
+        <div class="modal-content" data-stop-propagation="true">
+            <h3 class="modal-title">Comments</h3>
+            <p style="color:#6b7280;font-size:0.875rem;margin-bottom:1rem;">${project.idea}</p>
+            <div class="comments-list">
+                ${comments.length === 0
+                    ? '<p style="color:#9ca3af;font-style:italic;">No comments yet. Be the first to comment!</p>'
+                    : comments.map(c => `
+                        <div class="comment-item">
+                            <div class="comment-author">${c.author}</div>
+                            <div class="comment-time">${c.timestamp}</div>
+                            <div class="comment-text">${c.text}</div>
+                        </div>`).join('')}
+            </div>
+            <div class="comment-form">
+                <textarea id="comment-input" class="comment-input" placeholder="Write your comment..."></textarea>
+                <div class="modal-actions">
+                    <button class="btn-submit" id="comment-submit-btn" data-action="submit-comment">Submit Comment</button>
+                    <button class="btn-cancel" data-action="close-comments">Cancel</button>
+                </div>
+            </div>
+        </div>`;
+    modal.dataset.action = 'close-comments-overlay';
+    document.body.appendChild(modal);
+}
+
+function closeComments() {
+    const m = document.getElementById('comment-modal');
+    if (m) m.remove();
+    currentCommentProject = null;
+}
+
+async function submitComment() {
+    const input = document.getElementById('comment-input');
+    const text  = input.value.trim();
+    if (!text || currentCommentProject === null) return;
+
+    const btn = document.getElementById('comment-submit-btn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    showToast('Saving comment…');
+    try {
+        const project = projects.find(p => p.id === currentCommentProject);
+        await writeComment(project, text);
+        if (!commentsData[currentCommentProject]) commentsData[currentCommentProject] = [];
+        commentsData[currentCommentProject].push({
+            author: currentUser.displayName || 'Me',
+            timestamp: new Date().toLocaleString(),
+            text
+        });
+        closeComments();
+        renderProjects();
+        showToast('Comment saved ✓');
+    } catch (err) {
+        console.error(err);
+        btn.disabled = false; btn.textContent = 'Submit Comment';
+        showToast('Could not save: ' + err.message);
+    }
+}
+
+function openNewInitiativeModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'new-initiative-modal';
+    modal.innerHTML = `
+        <div class="modal-content" data-stop-propagation="true" style="max-width:700px;">
+            <h3 class="modal-title">Add New Initiative</h3>
+            <div class="comment-form">
+                <div>
+                    <label style="display:block;font-weight:600;color:#374151;margin-bottom:0.5rem;font-size:0.875rem;">Initiative Title *</label>
+                    <input id="new-idea" type="text" style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.875rem;" placeholder="Short title for the initiative">
+                </div>
+                <div>
+                    <label style="display:block;font-weight:600;color:#374151;margin-bottom:0.5rem;font-size:0.875rem;">Short Problem Statement</label>
+                    <textarea id="new-description" class="comment-input" style="min-height:70px;" placeholder="What problem does this solve?"></textarea>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
+                    <div>
+                        <label style="display:block;font-weight:600;color:#374151;margin-bottom:0.5rem;font-size:0.875rem;">Priority Level *</label>
+                        <select id="new-priority" style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.875rem;">
+                            <option value="P1">Highest Priority</option>
+                            <option value="P2">Second Tier Priority</option>
+                            <option value="P3" selected>Third Tier Priority</option>
+                            <option value="P4">Fourth Tier Priority</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-weight:600;color:#374151;margin-bottom:0.5rem;font-size:0.875rem;">Type of Project</label>
+                        <input id="new-type" type="text" style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.875rem;" placeholder="e.g., Automation, Report">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
+                    <div>
+                        <label style="display:block;font-weight:600;color:#374151;margin-bottom:0.5rem;font-size:0.875rem;">Impact</label>
+                        <select id="new-impact" style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.875rem;">
+                            <option value="Yes">High</option><option value="No">Low</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-weight:600;color:#374151;margin-bottom:0.5rem;font-size:0.875rem;">Complexity</label>
+                        <select id="new-complexity" style="width:100%;padding:0.75rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.875rem;">
+                            <option value="No">Low</option><option value="Yes">High</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-actions" style="margin-top:1rem;">
+                    <button class="btn-submit" id="new-initiative-submit" data-action="submit-new-initiative">Create Initiative</button>
+                    <button class="btn-cancel" data-action="close-new-initiative">Cancel</button>
+                </div>
+            </div>
+        </div>`;
+    modal.dataset.action = 'close-new-initiative-overlay';
+    document.body.appendChild(modal);
+}
+
+function closeNewInitiativeModal() {
+    const m = document.getElementById('new-initiative-modal');
+    if (m) m.remove();
+}
+
+async function submitNewInitiative() {
+    const idea        = document.getElementById('new-idea').value.trim();
+    const description = document.getElementById('new-description').value.trim();
+    const priority    = document.getElementById('new-priority').value;
+    const outputType  = document.getElementById('new-type').value.trim() || '';
+    const impact      = document.getElementById('new-impact').value;
+    const complexity  = document.getElementById('new-complexity').value;
+
+    if (!idea) { alert('Please enter an Initiative Title'); return; }
+
+    const btn = document.getElementById('new-initiative-submit');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    showToast('Saving initiative…');
+
+    try {
+        await writeNewInitiative({ idea, description, priority, outputType, highImpact: impact, highComplexity: complexity });
+        closeNewInitiativeModal();
+        showToast('Initiative saved ✓ — reloading…');
+        // Reload from SP to get the new item's real ID
+        await loadProjects();
+        await loadComments();
+        renderProjects();
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab')[1].classList.add('active');
+        switchView('priorities', { target: document.querySelectorAll('.tab')[1] });
+    } catch (err) {
+        console.error(err);
+        btn.disabled = false; btn.textContent = 'Create Initiative';
+        showToast('Could not save: ' + err.message);
+    }
+}
+
+function switchView(view, event) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    if (event && event.target) event.target.classList.add('active');
+    document.getElementById('home-section').classList.add('hidden');
+    document.getElementById('priorities-section').classList.add('hidden');
+    document.getElementById('stats-grid').classList.add('hidden');
+    if (view === 'home') {
+        document.getElementById('home-section').classList.remove('hidden');
+    } else if (view === 'priorities') {
+        document.getElementById('priorities-section').classList.remove('hidden');
+        document.getElementById('stats-grid').classList.remove('hidden');
+    }
+}
+
+// ── Event delegation — all clicks handled here, no inline onclick anywhere ────
+document.addEventListener('click', function(e) {
+    // Stop propagation if clicking inside modal content
+    if (e.target.closest('[data-stop-propagation]')) return;
+
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    const el     = e.target.closest('[data-action]');
+
+    // Card interactions
+    const likeBtn    = e.target.closest('[data-like]');
+    const commentBtn = e.target.closest('[data-comment]');
+    if (likeBtn && !likeBtn.disabled)  { toggleLike(Number(likeBtn.dataset.like)); return; }
+    if (commentBtn)                    { openComments(Number(commentBtn.dataset.comment)); return; }
+
+    // Overlay close (click outside modal)
+    if (e.target.closest('[data-action="close-comments-overlay"]') &&
+        !e.target.closest('.modal-content')) { closeComments(); return; }
+    if (e.target.closest('[data-action="close-new-initiative-overlay"]') &&
+        !e.target.closest('.modal-content')) { closeNewInitiativeModal(); return; }
+
+    if (!action) return;
+    switch (action) {
+        case 'new-initiative':          openNewInitiativeModal(); break;
+        case 'tab-home':                switchView('home', e); break;
+        case 'tab-priorities':          switchView('priorities', e); break;
+        case 'submit-comment':          submitComment(); break;
+        case 'close-comments':          closeComments(); break;
+        case 'submit-new-initiative':   submitNewInitiative(); break;
+        case 'close-new-initiative':    closeNewInitiativeModal(); break;
+    }
+});
+
+// ── Offline fallback data (shown instantly while SP loads) ───────────────────
+const FALLBACK_PROJECTS = [
+    { id: 1,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Sales consultant for product information: Technical Data Sheets, Portfolio, Operating Model", outputType: "Document Query",     likes: 0, department: "Fernando",    description: "" },
+    { id: 2,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Consultation source highlighting product differentiators by country/region",                  outputType: "Document Query",     likes: 0, department: "General",     description: "" },
+    { id: 3,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Budget received vs. consumed, with history",                                                   outputType: "Report",             likes: 0, department: "General",     description: "" },
+    { id: 4,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "WhatsApp-like chatbots for sellers or users who don't use email",                             outputType: "Communications",     likes: 0, department: "General",     description: "" },
+    { id: 5,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Phishing analyzer",                                                                            outputType: "Automation",         likes: 0, department: "General",     description: "" },
+    { id: 6,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Budget alerts dashboard",                                                                      outputType: "Report",             likes: 0, department: "General",     description: "" },
+    { id: 7,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Diagramming & multimedia creation",                                                            outputType: "Multimedia",         likes: 0, department: "General",     description: "" },
+    { id: 8,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Web research, populating/updating a single shared base",                                       outputType: "Information Mining", likes: 0, department: "General",     description: "" },
+    { id: 9,  priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Transformer from AI answers to a WORD/PDF template",                                           outputType: "Copyedition",        likes: 0, department: "Liliana",     description: "" },
+    { id: 10, priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Multi-Agent Brainstorming Architecture",                                                       outputType: "ML",                 likes: 0, department: "General",     description: "" },
+    { id: 11, priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "Goalmate: Employee goals aligned to corporate strategic map",                                   outputType: "Platform",           likes: 0, department: "Diana White", description: "" },
+    { id: 12, priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "AI Smartmatic Website Content Review & Update Agents",                                         outputType: "Automation",         likes: 0, department: "General",     description: "" },
+    { id: 13, priority: "P1", highImpact: "Yes", highComplexity: "No",  idea: "US Sales Consultant",                                                                           outputType: "Sales",              likes: 0, department: "Fernando",    description: "" },
+    { id: 14, priority: "P2", highImpact: "No",  highComplexity: "No",  idea: "Project facts (historical)",                                                                    outputType: "Document Query",     likes: 0, department: "General",     description: "" },
+    { id: 15, priority: "P2", highImpact: "No",  highComplexity: "No",  idea: "Agent that sends messages automatically in multiple channels",                                  outputType: "Communications",     likes: 0, department: "General",     description: "" },
+    { id: 16, priority: "P2", highImpact: "No",  highComplexity: "No",  idea: "Management and analysis of email threads",                                                       outputType: "Communications",     likes: 0, department: "General",     description: "" },
+    { id: 17, priority: "P3", highImpact: "Yes", highComplexity: "Yes", idea: "Prompt-based approval and curation of documents/content",                                       outputType: "Data Curation",      likes: 0, department: "General",     description: "" },
+    { id: 18, priority: "P3", highImpact: "Yes", highComplexity: "Yes", idea: "Document generator (technical documents for projects)",                                          outputType: "Document",           likes: 0, department: "General",     description: "" },
+    { id: 19, priority: "P3", highImpact: "Yes", highComplexity: "Yes", idea: "Knowledge of how many products, projects, and people per project",                               outputType: "Document Query",     likes: 0, department: "General",     description: "" },
+    { id: 20, priority: "P3", highImpact: "Yes", highComplexity: "Yes", idea: "Corporate DB Connector",                                                                         outputType: "Automation",         likes: 0, department: "General",     description: "" },
+    { id: 21, priority: "P3", highImpact: "Yes", highComplexity: "Yes", idea: "Employees fill Resource Allocation Tool (RAT) — could AI auto-fill?",                           outputType: "Report",             likes: 0, department: "General",     description: "" },
+    { id: 22, priority: "P3", highImpact: "Yes", highComplexity: "Yes", idea: "Identifier/Corrector of 'sources of truth'",                                                    outputType: "Data Curation",      likes: 0, department: "General",     description: "" },
+    { id: 23, priority: "P3", highImpact: "Yes", highComplexity: "No",  idea: "Diagramming & Multimedia for Operating Models",                                                  outputType: "Multimedia",         likes: 0, department: "Tech Writing", description: "" },
+    { id: 24, priority: "P4", highImpact: "No",  highComplexity: "Yes", idea: "Data Quality Inspector",                                                                         outputType: "Automation",         likes: 0, department: "General",     description: "" },
+    { id: 25, priority: "P4", highImpact: "No",  highComplexity: "Yes", idea: "Process to determine true staff hired on each project",                                          outputType: "Report",             likes: 0, department: "General",     description: "" },
+    { id: 26, priority: "P4", highImpact: "No",  highComplexity: "Yes", idea: "Staff meeting — strategy: smart whiteboard",                                                     outputType: "Communications",     likes: 0, department: "General",     description: "" },
+];
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+async function boot() {
+    // 1. Render fallback data immediately — page is never blank
+    projects = FALLBACK_PROJECTS;
+    renderProjects();
+
+    // 2. Load live data from SharePoint in the background
+    try {
+        await loadCurrentUser();
+        await loadProjects();
+        await loadComments();
+        renderProjects();   // re-render with live data
+    } catch (err) {
+        console.warn('SharePoint load failed — showing fallback data:', err.message);
+        // Show a subtle note but leave the fallback data visible
+        const note = document.createElement('div');
+        note.style.cssText = 'background:#fef3c7;color:#92400e;text-align:center;padding:0.5rem;font-size:0.8rem;';
+        note.textContent = '⚠️ Could not connect to SharePoint — showing cached data. Likes and comments require SharePoint access.';
+        document.body.insertBefore(note, document.body.firstChild);
+    }
+}
+
+boot();
+</script>
+</body>
+</html>
